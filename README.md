@@ -1,6 +1,6 @@
-# Moss-Ruby
+# Description
 
-Ruby gem to submit files to MOSS.
+Ruby gem to submit files to [MOSS](https://theory.stanford.edu/~aiken/moss/).
 
 # This is a fork!
 
