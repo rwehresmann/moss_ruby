@@ -29,18 +29,16 @@ class Moss
 	attr_accessor   :port
 	attr_reader     :options
 
-	def self.empty_file_hash
-		{ base_files: Array.new, files: Array.new }
+	def self.empty_data_hash
+		{ base_files: [], files: [], base_contents: [], contents: [] }
 	end
 
 	def self.add_base_file ( hash, file )
 		hash[:base_files] << file
-		hash
 	end
 
 	def self.add_file ( hash, file )
 		hash[:files] << file
-		hash
 	end
 
 	def initialize(userid, server = "moss.stanford.edu", port = 7690)
@@ -57,11 +55,16 @@ class Moss
 		@userid = userid
 	end
 
-	def upload_file (moss_server, file, id = 0)
-		filename = file.strip.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub /[^\w\-\/.]/, '_'
+	def upload(moss_server, to_upload, id = 0, option = { is_file: true })
+		if option[:is_file]
+			filename = to_upload.strip.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub /[^\w\-\/.]/, '_'
+			content = IO.read(to_upload)
+		else
+			filename = (0...15).map { ('a'..'z').to_a[rand(26)] }.join
+			content = to_upload
+		end
 
-		content = IO.read(file)
-		size = content.bytes.length
+		size = content.size
 
 		if size > 0
 			moss_server.write "file #{id} #{@options[:language]} #{size} #{filename}\n"
@@ -69,73 +72,54 @@ class Moss
 		end
 	end
 
-	def check(files_dict, callback=nil)
-		# Chech that the files_dict contains valid filenames
-		files_dict[:base_files].each do |file_search|
-			if Dir.glob(file_search).length == 0
-				raise "Unable to locate base file(s) matching #{file_search}"
-			end
-		end
+	def check(to_check, callback = nil)
+		return if to_check[:files].length == 0 && to_check[:content] == 0
+		locate_files(to_check[:base_files] + to_check[:files])
 
-		if files_dict[:files].length == 0
-			return
-		end
-
-		files_dict[:files].each do |file_search|
-			if Dir.glob(file_search).length == 0
-				raise "Unable to locate base file(s) matching #{file_search}"
-			end
-		end
-
-		# Connect to the server
 		callback.call('Connecting to MOSS') unless callback.nil?
-		moss_server = TCPSocket.new @server, @port
+		moss_server = open_connection
+
 		begin
-			# Send header details
 			callback.call(' - Sending configuration details') unless callback.nil?
-			moss_server.write "moss #{@userid}\n"
-			moss_server.write "directory #{@options[:directory_submission] ? 1 : 0 }\n"
-			moss_server.write "X #{@options[:experimental_server] ? 1 : 0}\n"
-			moss_server.write "maxmatches #{@options[:max_matches]}\n"
-			moss_server.write "show #{@options[:show_num_matches]}\n"
+			send_header(moss_server)
 
-			# Send language option
-			moss_server.write "language #{@options[:language]}\n"
-
-			callback.call(' - Checking language') unless callback.nil?
-			line = moss_server.gets
-			if line.strip() != "yes"
-				moss_server.write "end\n"
-				raise "Invalid language option."
+			processing = to_check[:base_files]
+			processing.each.inject(1) do |bf_count, file_search|
+				callback.call(" - Sending base files #{bf_count} of #{processing.count} - #{file_search}") unless callback.nil?
+				files = Dir.glob(file_search)
+				files.each.inject(1) do |file_count, file|
+					callback.call("   - Base file #{file_count} of #{files.count} - #{file}") unless callback.nil?
+					upload moss_server, file
+					file_count += 1
+				end
+				bf_count += 1
 			end
 
-			count = 1
-			processing = files_dict[:base_files]
-			processing.each do |file_search|
-				callback.call(" - Sending base files #{count} of #{processing.count} - #{file_search}") unless callback.nil?
+			processing = to_check[:base_contents]
+			processing.each.inject(1) do |count, content_search|
+				callback.call("   - Sending base content #{count} of #{processing.count}") unless callback.nil?
+				upload(moss_server, content_search, 0, is_file: false)
+				count += 1
+			end
+
+			processing = to_check[:files]
+			processing.each.inject(1) do |count, file_search|
+				callback.call(" - Sending files #{count} of #{processing.count} - #{file_search}") unless callback.nil?
 				files = Dir.glob(file_search)
-				file_count = 1
-				files.each do |file|
-					callback.call("   - Base file #{file_count} of #{files.count} - #{file}") unless callback.nil?
-					upload_file moss_server, file
+
+				files.each.inject(1) do |file_count, file|
+					callback.call("   - File #{file_count} of #{files.count} - #{file}") unless callback.nil?
+					upload moss_server, file, file_count
 					file_count += 1
 				end
 				count += 1
 			end
 
-			idx = 1
-			count = 1
-			processing = files_dict[:files]
-			processing.each do |file_search|
-				callback.call(" - Sending files #{count} of #{processing.count} - #{file_search}") unless callback.nil?
-				files = Dir.glob(file_search)
-				file_count = 1
-				files.each do |file|
-					callback.call("   - File #{idx} = #{file_count} of #{files.count} - #{file}") unless callback.nil?
-					upload_file moss_server, file, idx
-					idx += 1
-					file_count += 1
-				end
+			processing = to_check[:contents]
+			processing.each.inject(1) do |count, content_search|
+				callback.call("   - Sending base content #{count} of #{processing.count}") unless callback.nil?
+				upload(moss_server, content_search, count, is_file: false)
+				count += 1
 			end
 
 			callback.call(" - Waiting for server response") unless callback.nil?
@@ -144,7 +128,7 @@ class Moss
 			result = moss_server.gets
 
 			moss_server.write "end\n"
-			return result.strip()
+			return result.strip
 		ensure
 			moss_server.close
 		end
@@ -245,5 +229,30 @@ class Moss
 	def read_pcts(top_file)
 		regex = /<TH>(?<filename0>\S+)\s\((?<pct0>\d+)%\).*<TH>(?<filename1>\S+)\s\((?<pct1>\d+)%\)/xm
 		top_file.match(regex)
+	end
+
+	def locate_files(files)
+		files.each do |file|
+			raise "Unable to locate base file(s) matching #{file}" if Dir.glob(file).length == 0
+		end
+	end
+
+	def open_connection
+		TCPSocket.new @server, @port
+	end
+
+	def send_header(moss_server)
+		moss_server.write "moss #{@userid}\n"
+		moss_server.write "directory #{@options[:directory_submission] ? 1 : 0 }\n"
+		moss_server.write "X #{@options[:experimental_server] ? 1 : 0}\n"
+		moss_server.write "maxmatches #{@options[:max_matches]}\n"
+		moss_server.write "show #{@options[:show_num_matches]}\n"
+		moss_server.write "language #{@options[:language]}\n"
+
+		line = moss_server.gets
+		if line.strip() != "yes"
+			moss_server.write "end\n"
+			raise "Invalid language option."
+		end
 	end
 end
