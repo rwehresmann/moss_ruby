@@ -9,8 +9,10 @@ Credits to [macite](https://bitbucket.org/macite/), who [developed and published
 What this fork brings new:
 
   * The possibility to upload directly a string whit the source code content, as content to check or as base content too (for more information about what is a **base** content/file, please check the usage instructions in the original [script](http://moss.stanford.edu/general/scripts/mossnet));
-  * 'to_check' is a object to store a hash with the files to be analyzed, and now is treated as an instance object;
+  * **to_check** is a object to store a hash with the files to be analyzed, and now is treated as an instance object;
   * Methods to add file/content are now instance methods;
+  * Moss class name changed to only **Moss** (rather than **MossRuby**);
+  * Updated gem structure;
   * A bit of code refactoring in **check** method.
 
 What follow below is the original README, where only the usage section is updated. **Please note**: is pointed as requirements the creation of a MOSS account, because the usage require a user_id. However, whit the specified user_id of usage example, you are able to access MOSS server without problems (MOSS is public to everyone, but it wasn't always so, and maybe this *requirement* isn't more, in fact, a requirement).
