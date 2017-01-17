@@ -44,13 +44,10 @@ Usage involves the following steps:
 
 
 ```
-#!bash
-
 gem 'moss_ruby', git: 'https://github.com/rwehresmann/moss_ruby.git'
 ```
 
-```
-#!ruby
+```ruby
 
 # Create the Moss object
 moss = Moss.new(000000000) #replace 000000000 with your user id, if you have it
