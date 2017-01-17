@@ -24,31 +24,13 @@ require 'socket'
 require 'open-uri'
 
 class Moss
+	attr_accessor   :to_check
 	attr_accessor   :userid
 	attr_accessor   :server
 	attr_accessor   :port
 	attr_reader     :options
 
-	def self.empty_data_hash
-		{ base_files: [], files: [], base_contents: [], contents: [] }
-	end
-
-	def self.add_base_file ( hash, file )
-		hash[:base_files] << file
-	end
-
-	def self.add_file ( hash, file )
-		hash[:files] << file
-	end
-
-	def self.add_base_content(hash, content)
-		hash[:base_contents] << content
-	end
-
-	def self.add_content(hash, content)
-		hash[:contents] << content
-	end
-
+	# 'to_check' is a hash where the files/contents to compare should be added.
 	def initialize(userid, server = "moss.stanford.edu", port = 7690)
 		@options = {
 			max_matches:            10,
@@ -61,13 +43,35 @@ class Moss
 		@server = server
 		@port = port
 		@userid = userid
+		@to_check = { base_files: [], files: [], base_contents: [], contents: [] }
 	end
 
+	def add_base_file(file)
+		@to_check[:base_files] << file
+	end
+
+	def add_file(file)
+		@to_check[:files] << file
+	end
+
+	def add_base_content(content)
+		@to_check[:base_contents] << content
+	end
+
+	def add_content(content)
+		@to_check[:contents] << content
+	end
+
+	# Base files/contents are added with id = 0, others receive 1..n.
+	# 'is_file' option specify that what is sended to upload is a file (and so
+	# must be read from the server first).
 	def upload(moss_server, to_upload, id = 0, option = { is_file: true })
 		if option[:is_file]
 			filename = to_upload.strip.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub /[^\w\-\/.]/, '_'
 			content = IO.read(to_upload)
 		else
+			# Moss server need a file name, so when isn't a file that is been uploaded
+			# (and so haven't a name), a random name is generated.
 			filename = (0...15).map { ('a'..'z').to_a[rand(26)] }.join
 			content = to_upload
 		end
@@ -80,9 +84,10 @@ class Moss
 		end
 	end
 
-	def check(to_check, callback = nil)
-		return if to_check[:files].length == 0 && to_check[:content] == 0
-		locate_files(to_check[:base_files] + to_check[:files])
+	# Call to check the files added in '@to_check'.
+	def check(callback = nil)
+		return if @to_check[:files].length == 0 && @to_check[:content] == 0
+		locate_files(@to_check[:base_files] + @to_check[:files])
 
 		callback.call('Connecting to MOSS') unless callback.nil?
 		moss_server = open_connection
@@ -91,10 +96,10 @@ class Moss
 			callback.call(' - Sending configuration details') unless callback.nil?
 			send_header(moss_server)
 
-			send_files(moss_server, to_check[:base_files], true, callback)
-			send_contents(moss_server, to_check[:base_contents], true, callback)
-			send_files(moss_server, to_check[:files], false, callback)
-			send_contents(moss_server, to_check[:contents], false, callback)
+			send_files(moss_server, @to_check[:base_files], true, callback)
+			send_contents(moss_server, @to_check[:base_contents], true, callback)
+			send_files(moss_server, @to_check[:files], false, callback)
+			send_contents(moss_server, @to_check[:contents], false, callback)
 
 			callback.call(" - Waiting for server response") unless callback.nil?
 			moss_server.write "query 0 #{@options[:comment]}\n"
@@ -169,87 +174,93 @@ class Moss
 		result
 	end
 
-	private
+		private
 
-	def get_matches(uri, min_pct, callback)
-		result = Array.new
-		begin
-			callback.call(" - Reading match data") unless callback.nil?
-			page = open("#{uri}").read().encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '?')
-			regex = /<TR><TD><A HREF=".*?match(?<match_id>\d+).html">.*\((?<pct0>\d+)%\)<\/A>\n.*?<TD><A.*?((?<pct0>\d+)%\))/i
-			# puts "scanning page"
-			page.scan(regex).each do | match |
-				id, pct0, pct1 = match
-				# puts "#{id}, #{pct0}, #{pct1}"
-				if Integer(pct0) >= min_pct || Integer(pct1) >= min_pct
-					result << id
+		def get_matches(uri, min_pct, callback)
+			result = Array.new
+			begin
+				callback.call(" - Reading match data") unless callback.nil?
+				page = open("#{uri}").read().encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: '?')
+				regex = /<TR><TD><A HREF=".*?match(?<match_id>\d+).html">.*\((?<pct0>\d+)%\)<\/A>\n.*?<TD><A.*?((?<pct0>\d+)%\))/i
+				# puts "scanning page"
+				page.scan(regex).each do | match |
+					id, pct0, pct1 = match
+					# puts "#{id}, #{pct0}, #{pct1}"
+					if Integer(pct0) >= min_pct || Integer(pct1) >= min_pct
+						result << id
+					end
 				end
+				callback.call(" - Found #{result.count} match with at least #{min_pct}% similar") unless callback.nil?
+			rescue
 			end
-			callback.call(" - Found #{result.count} match with at least #{min_pct}% similar") unless callback.nil?
-		rescue
+			result
 		end
-		result
-	end
 
-	def strip_a(html)
-		html.gsub(/<A.*?>.*?<\/A>/, '')
-	end
-
-	def read_data(match_file)
-		regex = /<HR>\s+(?<filename>\S+)<p><PRE>\n(?<html>.*)<\/PRE>\n<\/PRE>\n<\/BODY>\n<\/HTML>/xm
-		match_file.match(regex)
-	end
-
-	def read_pcts(top_file)
-		regex = /<TH>(?<filename0>\S+)\s\((?<pct0>\d+)%\).*<TH>(?<filename1>\S+)\s\((?<pct1>\d+)%\)/xm
-		top_file.match(regex)
-	end
-
-	def locate_files(files)
-		files.each do |file|
-			raise "Unable to locate base file(s) matching #{file}" if Dir.glob(file).length == 0
+		def strip_a(html)
+			html.gsub(/<A.*?>.*?<\/A>/, '')
 		end
-	end
 
-	def open_connection
-		TCPSocket.new @server, @port
-	end
-
-	def send_header(moss_server)
-		moss_server.write "moss #{@userid}\n"
-		moss_server.write "directory #{@options[:directory_submission] ? 1 : 0 }\n"
-		moss_server.write "X #{@options[:experimental_server] ? 1 : 0}\n"
-		moss_server.write "maxmatches #{@options[:max_matches]}\n"
-		moss_server.write "show #{@options[:show_num_matches]}\n"
-		moss_server.write "language #{@options[:language]}\n"
-
-		line = moss_server.gets
-		if line.strip() != "yes"
-			moss_server.write "end\n"
-			raise "Invalid language option."
+		def read_data(match_file)
+			regex = /<HR>\s+(?<filename>\S+)<p><PRE>\n(?<html>.*)<\/PRE>\n<\/PRE>\n<\/BODY>\n<\/HTML>/xm
+			match_file.match(regex)
 		end
-	end
 
-	def send_files(moss_server, files, is_base = false, callback = nil)
-		files.each.inject(1) do |count, file_search|
-			callback.call(" - Sending #{'base' if is_base} files #{count} of #{files.count} - #{file_search}") unless callback.nil?
-			all_files = Dir.glob(file_search)
-			all_files.each.inject(1) do |file_count, file|
-				callback.call("   - File #{file_count} of #{files.count} - #{file}") unless callback.nil?
-				id = (is_base == true ? 0 : file_count)
-				upload(moss_server, file, id)
-				file_count += 1
+		def read_pcts(top_file)
+			regex = /<TH>(?<filename0>\S+)\s\((?<pct0>\d+)%\).*<TH>(?<filename1>\S+)\s\((?<pct1>\d+)%\)/xm
+			top_file.match(regex)
+		end
+
+		# When files are specified, it's necessary check if they exists.
+		def locate_files(files)
+			files.each do |file|
+				raise "Unable to locate base file(s) matching #{file}" if Dir.glob(file).length == 0
 			end
-			count += 1
 		end
-	end
 
-	def send_contents(moss_server, contents, is_base = false, callback = nil)
-		contents.each.inject(1) do |count, content_search|
-			callback.call("   - Sending #{'base' if is_base} content #{count} of #{contents.count}") unless callback.nil?
-			id = (is_base == true ? 0 : count)
-			upload(moss_server, content_search, id, is_file: false)
-			count += 1
+		# Open a connection whit Moss server.
+		def open_connection
+			TCPSocket.new @server, @port
 		end
-	end
+
+		# Send head details and check if Moss server accept the language option
+		# sended.
+		def send_header(moss_server)
+			moss_server.write "moss #{@userid}\n"
+			moss_server.write "directory #{@options[:directory_submission] ? 1 : 0 }\n"
+			moss_server.write "X #{@options[:experimental_server] ? 1 : 0}\n"
+			moss_server.write "maxmatches #{@options[:max_matches]}\n"
+			moss_server.write "show #{@options[:show_num_matches]}\n"
+			moss_server.write "language #{@options[:language]}\n"
+
+			line = moss_server.gets
+			if line.strip() != "yes"
+				moss_server.write "end\n"
+				raise "Invalid language option."
+			end
+		end
+
+		# 'is_base' indicate that 'files' array must be added as base files.
+		def send_files(moss_server, files, is_base = false, callback = nil)
+			files.each.inject(1) do |count, file_search|
+				callback.call(" - Sending #{'base' if is_base} files #{count} of #{files.count} - #{file_search}") unless callback.nil?
+				all_files = Dir.glob(file_search)
+				all_files.each.inject(1) do |file_count, file|
+					callback.call("   - File #{file_count} of #{files.count} - #{file}") unless callback.nil?
+					id = (is_base == true ? 0 : file_count)
+					upload(moss_server, file, id)
+					file_count += 1
+				end
+				count += 1
+			end
+		end
+
+		# 'is_base' indicate that 'contents' array must be added as base contents. 
+		def send_contents(moss_server, contents, is_base = false, callback = nil)
+			contents.each.inject(1) do |count, content_search|
+				callback.call("   - Sending #{'base' if is_base} content #{count} of #{contents.count}") unless callback.nil?
+				id = (is_base == true ? 0 : count)
+				upload(moss_server, content_search, id, is_file: false)
+				count += 1
+			end
+		end
 end
