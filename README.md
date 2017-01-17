@@ -4,7 +4,7 @@ Ruby gem to submit files to [MOSS](https://theory.stanford.edu/~aiken/moss/).
 
 # This is a fork!
 
-Credits to [macite](https://bitbucket.org/macite/), who [developed and published this gem in his Bitbucket repository](https://bitbucket.org/macite/moss-ruby).
+Credits to [Andrew Cain](https://bitbucket.org/macite/), who worked in the gem development and published this gem in [his Bitbucket repository](https://bitbucket.org/macite/moss-ruby).
 
 What this fork brings new:
 
