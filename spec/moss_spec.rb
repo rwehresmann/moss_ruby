@@ -46,7 +46,7 @@ describe "#check" do
 	end
 
 	def file_hash
-		result = Moss.empty_file_hash
+		result = Moss.empty_data_hash
 		test_dir = File.join(File.dirname(__FILE__), 'test_files')
 		Moss.add_file(result, "#{test_dir}/*.c")
 		result
