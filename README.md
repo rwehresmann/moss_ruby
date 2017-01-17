@@ -8,7 +8,7 @@ Credits to [macite](https://bitbucket.org/macite/), who [developed and published
 
 What this fork brings new:
 
-  * The possibility to upload directly a string whit the source code content, as content to check and as base content too (for more information about what is a **base** content/file, please check the usage instructions in the original [script](http://moss.stanford.edu/general/scripts/mossnet));
+  * The possibility to upload directly a string whit the source code content, as content to check or as base content too (for more information about what is a **base** content/file, please check the usage instructions in the original [script](http://moss.stanford.edu/general/scripts/mossnet));
   * 'to_check' is a object to store a hash with the files to be analyzed, and now is treated as an instance object;
   * Methods to add file/content are now instance methods;
   * A bit of code refactoring in **check** method.
