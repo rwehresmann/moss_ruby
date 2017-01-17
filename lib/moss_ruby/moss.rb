@@ -41,6 +41,14 @@ class Moss
 		hash[:files] << file
 	end
 
+	def self.add_base_content(hash, content)
+		hash[:base_contents] << content
+	end
+
+	def self.add_content(hash, content)
+		hash[:contents] << content
+	end
+
 	def initialize(userid, server = "moss.stanford.edu", port = 7690)
 		@options = {
 			max_matches:            10,
