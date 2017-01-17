@@ -91,44 +91,10 @@ class Moss
 			callback.call(' - Sending configuration details') unless callback.nil?
 			send_header(moss_server)
 
-			processing = to_check[:base_files]
-			processing.each.inject(1) do |bf_count, file_search|
-				callback.call(" - Sending base files #{bf_count} of #{processing.count} - #{file_search}") unless callback.nil?
-				files = Dir.glob(file_search)
-				files.each.inject(1) do |file_count, file|
-					callback.call("   - Base file #{file_count} of #{files.count} - #{file}") unless callback.nil?
-					upload moss_server, file
-					file_count += 1
-				end
-				bf_count += 1
-			end
-
-			processing = to_check[:base_contents]
-			processing.each.inject(1) do |count, content_search|
-				callback.call("   - Sending base content #{count} of #{processing.count}") unless callback.nil?
-				upload(moss_server, content_search, 0, is_file: false)
-				count += 1
-			end
-
-			processing = to_check[:files]
-			processing.each.inject(1) do |count, file_search|
-				callback.call(" - Sending files #{count} of #{processing.count} - #{file_search}") unless callback.nil?
-				files = Dir.glob(file_search)
-
-				files.each.inject(1) do |file_count, file|
-					callback.call("   - File #{file_count} of #{files.count} - #{file}") unless callback.nil?
-					upload moss_server, file, file_count
-					file_count += 1
-				end
-				count += 1
-			end
-
-			processing = to_check[:contents]
-			processing.each.inject(1) do |count, content_search|
-				callback.call("   - Sending base content #{count} of #{processing.count}") unless callback.nil?
-				upload(moss_server, content_search, count, is_file: false)
-				count += 1
-			end
+			send_files(moss_server, to_check[:base_files], true, callback)
+			send_contents(moss_server, to_check[:base_contents], true, callback)
+			send_files(moss_server, to_check[:files], false, callback)
+			send_contents(moss_server, to_check[:contents], false, callback)
 
 			callback.call(" - Waiting for server response") unless callback.nil?
 			moss_server.write "query 0 #{@options[:comment]}\n"
@@ -261,6 +227,29 @@ class Moss
 		if line.strip() != "yes"
 			moss_server.write "end\n"
 			raise "Invalid language option."
+		end
+	end
+
+	def send_files(moss_server, files, is_base = false, callback = nil)
+		files.each.inject(1) do |count, file_search|
+			callback.call(" - Sending #{'base' if is_base} files #{count} of #{files.count} - #{file_search}") unless callback.nil?
+			all_files = Dir.glob(file_search)
+			all_files.each.inject(1) do |file_count, file|
+				callback.call("   - File #{file_count} of #{files.count} - #{file}") unless callback.nil?
+				id = (is_base == true ? 0 : file_count)
+				upload(moss_server, file, id)
+				file_count += 1
+			end
+			count += 1
+		end
+	end
+
+	def send_contents(moss_server, contents, is_base = false, callback = nil)
+		contents.each.inject(1) do |count, content_search|
+			callback.call("   - Sending #{'base' if is_base} content #{count} of #{contents.count}") unless callback.nil?
+			id = (is_base == true ? 0 : count)
+			upload(moss_server, content_search, id, is_file: false)
+			count += 1
 		end
 	end
 end
