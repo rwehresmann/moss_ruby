@@ -107,7 +107,7 @@ class Moss
 			result = moss_server.gets
 
 			moss_server.write "end\n"
-			return result.strip
+			return result.strip if result
 		ensure
 			moss_server.close
 		end
@@ -254,7 +254,7 @@ class Moss
 			end
 		end
 
-		# 'is_base' indicate that 'contents' array must be added as base contents. 
+		# 'is_base' indicate that 'contents' array must be added as base contents.
 		def send_contents(moss_server, contents, is_base = false, callback = nil)
 			contents.each.inject(1) do |count, content_search|
 				callback.call("   - Sending #{'base' if is_base} content #{count} of #{contents.count}") unless callback.nil?
